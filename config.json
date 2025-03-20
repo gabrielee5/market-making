@@ -1,0 +1,84 @@
+{
+    "exchange": {
+        "name": "hyperliquid",
+        "testnet": false
+    },
+    
+    "trading": {
+        "symbol": "BTC/USDC:USDC",
+        "alternateSymbols": ["ETH/USDC:USDC", "SOL/USDC:USDC"],
+        "orderSize": 0.01,
+        "maxOrderSize": 0.05,
+        "minOrderSize": 0.001,
+        "maxPositionSize": 0.1,
+        "leverageLevel": 1
+    },
+    
+    "marketMaking": {
+        "strategy": "basic",
+        "spreadPercentage": 0.2,
+        "minSpreadPercentage": 0.05,
+        "maxSpreadPercentage": 0.5,
+        "updateInterval": 5000,
+        "orderBookDepth": 20,
+        "placementLayers": 3,
+        "layerSpreadMultiplier": 1.5
+    },
+    
+    "riskManagement": {
+        "maxSlippage": 0.05,
+        "maxDrawdown": 5,
+        "stopLossPercentage": 2,
+        "takeProfitPercentage": 1,
+        "hedgeRatio": 0.8,
+        "maxDailyLoss": 100,
+        "cooldownPeriod": 300000
+    },
+    
+    "advanced": {
+        "hedgingEnabled": false,
+        "correlationThreshold": 0.7,
+        "volumeThreshold": 10000,
+        "volatilityScaling": true,
+        "adaptiveParameters": true,
+        "orderImbalanceThreshold": 2
+    },
+    
+    "indicators": {
+        "ema": {
+            "enabled": true,
+            "periods": [8, 21, 55],
+            "significance": 0.7
+        },
+        "rsi": {
+            "enabled": true,
+            "period": 14,
+            "overbought": 70,
+            "oversold": 30,
+            "significance": 0.5
+        },
+        "bollingerBands": {
+            "enabled": true,
+            "period": 20,
+            "stdDev": 2,
+            "significance": 0.6
+        }
+    },
+    
+    "development": {
+        "logLevel": "info",
+        "backtesting": false,
+        "simulationBalance": 10000,
+        "recordData": true,
+        "dataStoragePath": "./data"
+    },
+    
+    "notifications": {
+        "enabled": false,
+        "thresholds": {
+            "profitNotification": 50,
+            "lossNotification": 50,
+            "positionSizeAlert": 0.07
+        }
+    }
+}
