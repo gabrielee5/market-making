@@ -55,11 +55,11 @@
         "strategy": "basic",
         "spreadPercentage": 0.15,
         "minSpreadPercentage": 0.05,
-        "maxSpreadPercentage": 0.5,
-        "updateInterval": 20000,
+        "maxSpreadPercentage": 0.99,
+        "updateInterval": 60000,
         "orderBookDepth": 20,
-        "placementLayers": 3,
-        "layerSpreadMultiplier": 1.5
+        "placementLayers": 4,
+        "layerSpreadMultiplier": 1.0
     },
     
     "riskManagement": {

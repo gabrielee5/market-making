@@ -618,11 +618,20 @@ class HyperliquidMarketMaker:
             except Exception:
                 price_precision = 2  # Default precision if unable to determine
             
+            # Generate Fibonacci sequence for order size multipliers
+            # Using the first layers + 1 Fibonacci numbers (skipping the first 0)
+            fibonacci_sequence = [1, 1, 2, 3, 5, 8, 13, 21]  # Start with the first two numbers
+            for i in range(2, layers + 1):
+                fibonacci_sequence.append(fibonacci_sequence[i-1] + fibonacci_sequence[i-2])
+            
             # Add bid orders to batch
             if bid_size > 0 and prices["bid_price"] > 0:
                 for i in range(layers):
                     layer_bid_price = round(prices["bid_price"] * (1 - (i * (multiplier - 1) / 100)), price_precision)
-                    layer_bid_size = bid_size / (i + 1) if i > 0 else bid_size
+                    
+                    # Use Fibonacci multiplier for order size
+                    # First layer (i=0) is the base_order_size
+                    layer_bid_size = bid_size * fibonacci_sequence[i]
                     
                     try:
                         min_order_size = float(symbol_config.get("minOrderSize", 0.001))
@@ -637,7 +646,8 @@ class HyperliquidMarketMaker:
                             "amount": layer_bid_size,
                             "price": layer_bid_price,
                             "params": {
-                                "timeInForce": "Gtc"  # Good-till-cancelled
+                                "timeInForce": "Gtc",  # Good-till-cancelled
+                                "postOnly": True  # Make order post-only
                             }
                         })
                         logger.debug(f"Added bid order to batch: {layer_bid_size} @ {layer_bid_price}")
@@ -646,7 +656,10 @@ class HyperliquidMarketMaker:
             if ask_size > 0 and prices["ask_price"] > 0:
                 for i in range(layers):
                     layer_ask_price = round(prices["ask_price"] * (1 + (i * (multiplier - 1) / 100)), price_precision)
-                    layer_ask_size = ask_size / (i + 1) if i > 0 else ask_size
+                    
+                    # Use Fibonacci multiplier for order size
+                    # First layer (i=0) is the base_order_size
+                    layer_ask_size = ask_size * fibonacci_sequence[i]
                     
                     try:
                         min_order_size = float(symbol_config.get("minOrderSize", 0.001))
@@ -661,7 +674,8 @@ class HyperliquidMarketMaker:
                             "amount": layer_ask_size,
                             "price": layer_ask_price,
                             "params": {
-                                "timeInForce": "Gtc"  # Good-till-cancelled
+                                "timeInForce": "Gtc",  # Good-till-cancelled
+                                "postOnly": True  # Make order post-only
                             }
                         })
                         logger.debug(f"Added ask order to batch: {layer_ask_size} @ {layer_ask_price}")
