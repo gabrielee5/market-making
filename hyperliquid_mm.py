@@ -89,9 +89,10 @@ class HyperliquidMarketMaker:
                     await exchange.load_markets()
                     logger.info(f"Connected to {exchange.name}")
                     
-                    # Print first few available markets to help with debugging
                     available_markets = list(exchange.markets.keys())
-                    logger.info(f"Available markets (first 5): {available_markets[:5]}")
+                    perpetual_markets = [market for market in available_markets if market.endswith(':USDC')]
+                    logger.info(f"Found {len(perpetual_markets)} perpetual markets")
+                    logger.info(f"Available markets (first 5): {perpetual_markets[:5]}")
                 except Exception as market_error:
                     logger.error(f"Failed to load markets: {str(market_error)}")
                     # We can continue without markets loaded, but it may cause issues later
