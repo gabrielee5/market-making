@@ -417,9 +417,9 @@ class HyperliquidMarketMaker:
             logger.error(f"Error fetching positions: {str(e)}")
             return {"size": 0, "side": "flat", "unrealized_pnl": 0}
     
-    async def place_market_making_orders(self, symbol: str, prices: Dict[str, float], position: Dict[str, Any]) -> List[Dict]:
+    async def place_market_making_orders_batch(self, symbol: str, prices: Dict[str, float], position: Dict[str, Any]) -> List[Dict]:
         """
-        Place market making orders with improved error handling
+        Place market making orders with batch operation for faster execution
         
         Args:
             symbol: Trading pair symbol
@@ -441,8 +441,6 @@ class HyperliquidMarketMaker:
         try:
             # Cancel existing orders to avoid conflicts
             await self.cancel_all_orders(symbol)
-            
-            orders = []
             
             # Safe extraction of position data with defaults
             position_size = float(position.get("size", 0)) if position.get("size") is not None else 0
@@ -478,7 +476,7 @@ class HyperliquidMarketMaker:
             elif position_side == "short" and position_size >= max_position_size:
                 ask_size = 0  # Don't sell more if we're at max short position
             
-            # Place multiple layers of orders if configured
+            # Placement layers configuration
             try:
                 layers = int(self.config["marketMaking"].get("placementLayers", 3))
                 if layers <= 0:
@@ -495,10 +493,20 @@ class HyperliquidMarketMaker:
                 logger.warning("Invalid multiplier setting, using default")
                 multiplier = 1.5
             
-            # Place bid orders
+            # Prepare batch orders
+            batch_orders = []
+            
+            # Try to get price precision for rounding
+            try:
+                ticker = await self.exchange.fetch_ticker(symbol)
+                price_precision = self.price_precision(ticker)
+            except Exception:
+                price_precision = 2  # Default precision if unable to determine
+            
+            # Add bid orders to batch
             if bid_size > 0 and prices["bid_price"] > 0:
                 for i in range(layers):
-                    layer_bid_price = prices["bid_price"] * (1 - (i * (multiplier - 1) / 100))
+                    layer_bid_price = round(prices["bid_price"] * (1 - (i * (multiplier - 1) / 100)), price_precision)
                     layer_bid_size = bid_size / (i + 1) if i > 0 else bid_size
                     
                     try:
@@ -507,21 +515,22 @@ class HyperliquidMarketMaker:
                         min_order_size = 0.001
                     
                     if layer_bid_size >= min_order_size:
-                        try:
-                            bid_order = await self.exchange.create_limit_buy_order(
-                                symbol,
-                                layer_bid_size,
-                                layer_bid_price
-                            )
-                            orders.append(bid_order)
-                            logger.info(f"Placed bid order: {layer_bid_size} @ {layer_bid_price}")
-                        except Exception as e:
-                            logger.error(f"Error placing bid order: {str(e)}")
+                        batch_orders.append({
+                            "symbol": symbol,
+                            "type": "limit",
+                            "side": "buy",
+                            "amount": layer_bid_size,
+                            "price": layer_bid_price,
+                            "params": {
+                                "timeInForce": "Gtc"  # Good-till-cancelled
+                            }
+                        })
+                        logger.debug(f"Added bid order to batch: {layer_bid_size} @ {layer_bid_price}")
             
-            # Place ask orders
+            # Add ask orders to batch
             if ask_size > 0 and prices["ask_price"] > 0:
                 for i in range(layers):
-                    layer_ask_price = prices["ask_price"] * (1 + (i * (multiplier - 1) / 100))
+                    layer_ask_price = round(prices["ask_price"] * (1 + (i * (multiplier - 1) / 100)), price_precision)
                     layer_ask_size = ask_size / (i + 1) if i > 0 else ask_size
                     
                     try:
@@ -530,27 +539,83 @@ class HyperliquidMarketMaker:
                         min_order_size = 0.001
                     
                     if layer_ask_size >= min_order_size:
-                        try:
-                            ask_order = await self.exchange.create_limit_sell_order(
-                                symbol,
-                                layer_ask_size,
-                                layer_ask_price
-                            )
-                            orders.append(ask_order)
-                            logger.info(f"Placed ask order: {layer_ask_size} @ {layer_ask_price}")
-                        except Exception as e:
-                            logger.error(f"Error placing ask order: {str(e)}")
+                        batch_orders.append({
+                            "symbol": symbol,
+                            "type": "limit",
+                            "side": "sell",
+                            "amount": layer_ask_size,
+                            "price": layer_ask_price,
+                            "params": {
+                                "timeInForce": "Gtc"  # Good-till-cancelled
+                            }
+                        })
+                        logger.debug(f"Added ask order to batch: {layer_ask_size} @ {layer_ask_price}")
             
-            self.open_orders = orders
-            return orders
+            # Place batch orders
+            if batch_orders:
+                logger.info(f"Placing {len(batch_orders)} orders in batch")
+                
+                # Add additional logging for debugging
+                logger.debug(f"Batch order details: {json.dumps(batch_orders, default=str)}")
+                
+                # Execute the batch order creation
+                try:
+                    result = await self.exchange.create_orders(batch_orders)
+                    
+                    # Log success
+                    success_count = len(result) if isinstance(result, list) else 1
+                    logger.info(f"Successfully placed {success_count} orders in batch")
+                    
+                    self.open_orders = result
+                    return result
+                except Exception as batch_error:
+                    logger.error(f"Batch order placement failed: {str(batch_error)}")
+                    
+                    # Try to provide more context in the error
+                    if hasattr(batch_error, 'args') and len(batch_error.args) > 0:
+                        logger.error(f"Error details: {batch_error.args[0]}")
+                        
+                    # Check if the method exists but failed, or doesn't exist
+                    if "has no attribute" in str(batch_error):
+                        logger.warning("create_orders method not available, falling back to individual orders")
+                        
+                        # Fall back to placing orders individually
+                        individual_results = []
+                        for order in batch_orders:
+                            try:
+                                if order['side'] == 'buy':
+                                    result = await self.exchange.create_limit_buy_order(
+                                        order['symbol'],
+                                        order['amount'],
+                                        order['price'],
+                                        order.get('params', {})
+                                    )
+                                else:
+                                    result = await self.exchange.create_limit_sell_order(
+                                        order['symbol'],
+                                        order['amount'],
+                                        order['price'],
+                                        order.get('params', {})
+                                    )
+                                individual_results.append(result)
+                                logger.debug(f"Placed individual {order['side']} order: {order['amount']} @ {order['price']}")
+                            except Exception as order_error:
+                                logger.error(f"Error placing individual order: {str(order_error)}")
+                        
+                        self.open_orders = individual_results
+                        return individual_results
+                    return []
+            else:
+                logger.warning("No orders to place")
+                return []
                 
         except Exception as e:
-            logger.error(f"Error placing market making orders: {str(e)}")
+            logger.error(f"Error in place_market_making_orders_batch: {str(e)}")
             return []
-    
+
     async def cancel_all_orders(self, symbol: str) -> bool:
         """
-        Cancel all open orders for a symbol
+        Cancel all open orders for a symbol using batch operation
         
         Args:
             symbol: Trading pair symbol
@@ -565,14 +630,22 @@ class HyperliquidMarketMaker:
         try:
             open_orders = await self.exchange.fetch_open_orders(symbol)
             
-            for order in open_orders:
-                await self.exchange.cancel_order(order["id"], symbol)
-                logger.debug(f"Cancelled order: {order['id']}")
+            # Skip if no orders to cancel
+            if not open_orders or len(open_orders) == 0:
+                return True
+                
+            # Extract all order IDs
+            order_ids = [order["id"] for order in open_orders if "id" in order]
             
+            if order_ids:
+                # Use cancelOrders to cancel multiple orders in one request
+                await self.exchange.cancel_orders(order_ids, symbol)
+                logger.info(f"Cancelled {len(order_ids)} orders in batch")
+                
             self.open_orders = []
             return True
         except Exception as e:
-            logger.error(f"Error cancelling orders: {str(e)}")
+            logger.error(f"Error cancelling orders in batch: {str(e)}")
             return False
     
     def assess_risk(self, position: Dict[str, Any], market_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -913,7 +986,7 @@ class HyperliquidMarketMaker:
                     
                     # Place market making orders if not paused
                     if not risk_assessment["recommendations"]["pause_trading"]:
-                        await self.place_market_making_orders(symbol, prices, position)
+                        await self.place_market_making_orders_batch(symbol, prices, position)
                     
                     # Wait for next update
                     await asyncio.sleep(update_interval)
