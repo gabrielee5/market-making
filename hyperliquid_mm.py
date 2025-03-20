@@ -475,11 +475,48 @@ class HyperliquidMarketMaker:
         }
     
     def price_precision(self, ticker: Dict[str, Any]) -> int:
-        """Determine price precision based on ticker"""
-        if "precision" in ticker and "price" in ticker["precision"]:
-            return ticker["precision"]["price"]
-        # Default precision
-        return 2
+        """
+        Determine price precision based on ticker information from Hyperliquid
+        
+        Args:
+            ticker: Dictionary containing ticker information
+            
+        Returns:
+            int: Number of decimal places for price precision
+        """
+        try:
+            # For Hyperliquid, precision information is in the ticker's info dictionary
+            # The price precision isn't directly provided, but we can extract it from
+            # the actual prices by looking at their decimal places
+            
+            # Try to get the most precise price value available
+            mark_price = ticker.get('markPrice') or ticker.get('info', {}).get('markPx')
+            mid_price = ticker.get('last') or ticker.get('info', {}).get('midPx')
+            oracle_price = ticker.get('info', {}).get('oraclePx')
+            
+            # Use the first non-None price we find
+            price_str = None
+            for price in [mark_price, mid_price, oracle_price]:
+                if price is not None:
+                    price_str = str(price)
+                    break
+            
+            if price_str and '.' in price_str:
+                # Count decimal places
+                return len(price_str.split('.')[-1])
+            
+            # If we can't determine precision from prices, try to find it in the info dictionary
+            if ticker.get('info') and 'szDecimals' in ticker['info']:
+                # As a fallback, we can use szDecimals (size decimals)
+                # For most trading pairs, price precision is typically higher than size precision
+                return int(ticker['info']['szDecimals']) + 1
+            
+            # Default precision if we can't determine it
+            return 1
+        except Exception as e:
+            # Log the error and return a safe default
+            logger.warning(f"Error determining price precision: {str(e)}")
+            return 1
     
     async def get_current_position(self, symbol: str) -> Dict[str, Any]:
         """
@@ -609,12 +646,12 @@ class HyperliquidMarketMaker:
                 multiplier = 1.5
 
             try:
-                price_step = float(self.config["marketMaking"].get("priceStep", 0.005))
-                if price_step <= 0.0005:
-                    price_step = 0.001
+                price_step = float(self.config["marketMaking"].get("priceStep", 0.1))
+                if price_step <= 0.05:
+                    price_step = 0.1
             except (ValueError, TypeError):
                 logger.warning("Invalid step for price setting, using default")
-                price_step = 0.005
+                price_step = 0.1
             
             # Prepare batch orders
             batch_orders = []

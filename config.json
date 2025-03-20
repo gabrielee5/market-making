@@ -42,11 +42,20 @@
         },
         {
             "symbol": "TRUMP/USDC:USDC",
-            "enabled": true,
+            "enabled": false,
             "orderSize": 5.0,
             "maxOrderSize": 100.0,
             "minOrderSize": 1.0,
             "maxPositionSize": 250.0,
+            "leverageLevel": 1
+        },
+        {
+            "symbol": "PURR/USDC:USDC",
+            "enabled": true,
+            "orderSize": 200.0,
+            "maxOrderSize": 4000.0,
+            "minOrderSize": 40.0,
+            "maxPositionSize": 10000.0,
             "leverageLevel": 1
         }
     ],
@@ -60,7 +69,7 @@
         "orderBookDepth": 20,
         "placementLayers": 6,
         "layerSpreadMultiplier": 1.0,
-        "priceStep": 0.1
+        "priceStep": 0.2
     },
     
     "riskManagement": {
