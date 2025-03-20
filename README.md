@@ -43,8 +43,8 @@ cp .env.example .env
 
 4. Edit the `.env` file with your Hyperliquid API credentials:
 ```
-HYPERLIQUID_API_KEY=your_api_key_here
-HYPERLIQUID_API_SECRET=your_api_secret_here
+HYPERLIQUID_WALLET=your_api_key_here
+HYPERLIQUID_SECRET_KEY=your_api_secret_here
 ```
 
 5. Review and modify the `config.json` file to adjust your trading parameters.

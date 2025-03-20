@@ -43,10 +43,10 @@
         {
             "symbol": "TRUMP/USDC:USDC",
             "enabled": true,
-            "orderSize": 10.0,
-            "maxOrderSize": 40.0,
-            "minOrderSize": 2.0,
-            "maxPositionSize": 100.0,
+            "orderSize": 5.0,
+            "maxOrderSize": 100.0,
+            "minOrderSize": 1.0,
+            "maxPositionSize": 250.0,
             "leverageLevel": 1
         }
     ],
@@ -58,8 +58,9 @@
         "maxSpreadPercentage": 0.99,
         "updateInterval": 60000,
         "orderBookDepth": 20,
-        "placementLayers": 4,
-        "layerSpreadMultiplier": 1.0
+        "placementLayers": 6,
+        "layerSpreadMultiplier": 1.0,
+        "priceStep": 0.1
     },
     
     "riskManagement": {
