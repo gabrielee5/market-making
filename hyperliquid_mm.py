@@ -646,11 +646,13 @@ class HyperliquidMarketMaker:
                 multiplier = 1.5
 
             try:
-                price_step = float(self.config["marketMaking"].get("priceStep", 0.1))
-                if price_step <= 0.05:
+                # Get price_step from symbol-specific config instead of marketMaking section
+                price_step = float(symbol_config.get("price_step", 0.1))
+                if price_step <= 0:
+                    logger.warning(f"Invalid price_step value ({price_step}) for {symbol}, using default")
                     price_step = 0.1
             except (ValueError, TypeError):
-                logger.warning("Invalid step for price setting, using default")
+                logger.warning(f"Invalid price_step setting for {symbol}, using default")
                 price_step = 0.1
             
             # Prepare batch orders
