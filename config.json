@@ -4,9 +4,7 @@
         "testnet": false
     },
     
-    "trading": {
-        "symbol": "BTC/USDC:USDC",
-        "alternateSymbols": ["ETH/USDC:USDC", "SOL/USDC:USDC"],
+    "defaultTradingParams": {
         "orderSize": 0.01,
         "maxOrderSize": 0.05,
         "minOrderSize": 0.001,
@@ -14,9 +12,48 @@
         "leverageLevel": 1
     },
     
+    "symbols": [
+        {
+            "symbol": "BTC/USDC:USDC",
+            "enabled": false,
+            "orderSize": 0.01,
+            "maxOrderSize": 0.05,
+            "minOrderSize": 0.001,
+            "maxPositionSize": 0.1,
+            "leverageLevel": 1
+        },
+        {
+            "symbol": "ETH/USDC:USDC",
+            "enabled": false,
+            "orderSize": 0.05,
+            "maxOrderSize": 0.2,
+            "minOrderSize": 0.005,
+            "maxPositionSize": 0.5,
+            "leverageLevel": 1
+        },
+        {
+            "symbol": "SOL/USDC:USDC",
+            "enabled": false,
+            "orderSize": 0.5,
+            "maxOrderSize": 2.0,
+            "minOrderSize": 0.1,
+            "maxPositionSize": 5.0,
+            "leverageLevel": 1
+        },
+        {
+            "symbol": "TRUMP/USDC:USDC",
+            "enabled": true,
+            "orderSize": 10.0,
+            "maxOrderSize": 40.0,
+            "minOrderSize": 2.0,
+            "maxPositionSize": 100.0,
+            "leverageLevel": 1
+        }
+    ],
+    
     "marketMaking": {
         "strategy": "basic",
-        "spreadPercentage": 0.2,
+        "spreadPercentage": 0.15,
         "minSpreadPercentage": 0.05,
         "maxSpreadPercentage": 0.5,
         "updateInterval": 20000,

@@ -219,7 +219,117 @@ class HyperliquidMarketMaker:
         except Exception as e:
             logger.error(f"Error initializing markets: {str(e)}")
             raise
+
+    def get_symbol_config(self, symbol: str) -> dict:
+        """
+        Get trading configuration for a specific symbol
+        
+        Args:
+            symbol: Trading pair symbol
             
+        Returns:
+            Dictionary with trading parameters for the symbol
+        """
+        # Check if symbol exists in the configuration
+        symbol_config = None
+        
+        # Find the config for this symbol in the symbols array
+        if "symbols" in self.config:
+            for s in self.config["symbols"]:
+                if s.get("symbol") == symbol:
+                    symbol_config = s
+                    break
+        
+        # If we don't have a specific config for this symbol, or symbols array doesn't exist
+        if symbol_config is None:
+            # Check if we have a legacy trading config or fallback to default params
+            if "trading" in self.config:
+                # Legacy config format
+                return self.config["trading"]
+            elif "defaultTradingParams" in self.config:
+                # Use default params
+                return self.config["defaultTradingParams"]
+            else:
+                # Last resort - return a minimal set of defaults
+                logger.warning(f"No configuration found for symbol {symbol}, using hardcoded defaults")
+                return {
+                    "orderSize": 0.01,
+                    "maxOrderSize": 0.05,
+                    "minOrderSize": 0.001,
+                    "maxPositionSize": 0.1,
+                    "leverageLevel": 1
+                }
+        
+        # Merge with default params to ensure all required parameters exist
+        if "defaultTradingParams" in self.config:
+            # Create a new dict with defaults, then update with symbol-specific values
+            merged_config = self.config["defaultTradingParams"].copy()
+            merged_config.update(symbol_config)
+            return merged_config
+        
+        # If no defaults exist, just return the symbol config
+        return symbol_config            
+
+    async def initialize_markets_for_symbol(self, symbol: str) -> str:
+        """
+        Load available markets and find the correct symbol format for a specific symbol
+        
+        Args:
+            symbol: Symbol to initialize
+            
+        Returns:
+            Validated symbol string
+        """
+        try:
+            if not self.exchange:
+                logger.error("Exchange not initialized")
+                return symbol
+                
+            # Get all available markets
+            markets = self.exchange.markets
+            
+            # Try to find the correct symbol format
+            symbol_key = None
+            
+            # Look for direct match first
+            if symbol in markets:
+                symbol_key = symbol
+                logger.info(f"Found exact symbol match: {symbol_key}")
+            else:
+                # Try different variations (forward slash vs dash)
+                alt_symbol = symbol.replace('/', '-')
+                if alt_symbol in markets:
+                    symbol_key = alt_symbol
+                    logger.info(f"Found alternative symbol format: {symbol_key}")
+                else:
+                    alt_symbol = symbol.replace('-', '/')
+                    if alt_symbol in markets:
+                        symbol_key = alt_symbol
+                        logger.info(f"Found alternative symbol format: {symbol_key}")
+                
+                # Check for base/quote variations
+                if not symbol_key:
+                    base, quote = symbol.replace('-', '/').split('/')
+                    for key in markets:
+                        market_base = markets[key].get('base', '')
+                        market_quote = markets[key].get('quote', '')
+                        if (base == market_base and quote == market_quote) or f"{market_base}-{market_quote}" == symbol:
+                            symbol_key = key
+                            logger.info(f"Found symbol by base/quote match: {symbol_key}")
+                            break
+            
+            if not symbol_key:
+                # List available symbols
+                available_symbols = list(markets.keys())
+                logger.error(f"Symbol {symbol} not found. Available symbols: {available_symbols[:10]}...")
+                raise ValueError(f"Could not find trading symbol {symbol} on Hyperliquid")
+            
+            return symbol_key
+            
+        except Exception as e:
+            logger.error(f"Error initializing market for {symbol}: {str(e)}")
+            raise
+
     async def fetch_market_data(self, symbol: str) -> Dict[str, Any]:
         """
         Fetch market data from the exchange
@@ -417,7 +527,7 @@ class HyperliquidMarketMaker:
             logger.error(f"Error fetching positions: {str(e)}")
             return {"size": 0, "side": "flat", "unrealized_pnl": 0}
     
-    async def place_market_making_orders_batch(self, symbol: str, prices: Dict[str, float], position: Dict[str, Any]) -> List[Dict]:
+    async def place_market_making_orders_batch(self, symbol: str, prices: Dict[str, float], position: Dict[str, Any], symbol_config: Dict[str, Any] = None) -> List[Dict]:
         """
         Place market making orders with batch operation for faster execution
         
@@ -425,6 +535,7 @@ class HyperliquidMarketMaker:
             symbol: Trading pair symbol
             prices: Calculated prices
             position: Current position
+            symbol_config: Configuration for this specific symbol
             
         Returns:
             List of placed orders
@@ -432,6 +543,10 @@ class HyperliquidMarketMaker:
         if not self.exchange:
             logger.error("Exchange not initialized")
             return []
+            
+        # If no symbol config provided, get it
+        if symbol_config is None:
+            symbol_config = self.get_symbol_config(symbol)
             
         # Skip if prices are zeros or invalid
         if prices["bid_price"] <= 0 or prices["ask_price"] <= 0:
@@ -448,23 +563,23 @@ class HyperliquidMarketMaker:
             if position_side is None:
                 position_side = "flat"
             
-            # Get configured order size with validation
+            # Get configured order size with validation from symbol-specific config
             try:
-                base_order_size = float(self.config["trading"]["orderSize"])
+                base_order_size = float(symbol_config.get("orderSize", 0.01))
                 if base_order_size <= 0:
-                    logger.warning("Invalid order size in config, using default")
+                    logger.warning(f"Invalid order size in config for {symbol}, using default")
                     base_order_size = 0.01
             except (ValueError, TypeError, KeyError):
-                logger.warning("Error reading order size from config, using default")
+                logger.warning(f"Error reading order size from config for {symbol}, using default")
                 base_order_size = 0.01
                 
             try:
-                max_position_size = float(self.config["trading"]["maxPositionSize"])
+                max_position_size = float(symbol_config.get("maxPositionSize", 0.1))
                 if max_position_size <= 0:
-                    logger.warning("Invalid max position size in config, using default")
+                    logger.warning(f"Invalid max position size in config for {symbol}, using default")
                     max_position_size = 0.1
             except (ValueError, TypeError, KeyError):
-                logger.warning("Error reading max position size from config, using default")
+                logger.warning(f"Error reading max position size from config for {symbol}, using default")
                 max_position_size = 0.1
             
             # Adjust order sizes based on current position
@@ -510,7 +625,7 @@ class HyperliquidMarketMaker:
                     layer_bid_size = bid_size / (i + 1) if i > 0 else bid_size
                     
                     try:
-                        min_order_size = float(self.config["trading"].get("minOrderSize", 0.001))
+                        min_order_size = float(symbol_config.get("minOrderSize", 0.001))
                     except (ValueError, TypeError):
                         min_order_size = 0.001
                     
@@ -534,7 +649,7 @@ class HyperliquidMarketMaker:
                     layer_ask_size = ask_size / (i + 1) if i > 0 else ask_size
                     
                     try:
-                        min_order_size = float(self.config["trading"].get("minOrderSize", 0.001))
+                        min_order_size = float(symbol_config.get("minOrderSize", 0.001))
                     except (ValueError, TypeError):
                         min_order_size = 0.001
                     
@@ -553,7 +668,7 @@ class HyperliquidMarketMaker:
             
             # Place batch orders
             if batch_orders:
-                logger.info(f"Placing {len(batch_orders)} orders in batch")
+                logger.info(f"Placing {len(batch_orders)} orders in batch for {symbol}")
                 
                 # Add additional logging for debugging
                 logger.debug(f"Batch order details: {json.dumps(batch_orders, default=str)}")
@@ -564,12 +679,12 @@ class HyperliquidMarketMaker:
                     
                     # Log success
                     success_count = len(result) if isinstance(result, list) else 1
-                    logger.info(f"Successfully placed {success_count} orders in batch")
+                    logger.info(f"Successfully placed {success_count} orders in batch for {symbol}")
                     
                     self.open_orders = result
                     return result
                 except Exception as batch_error:
-                    logger.error(f"Batch order placement failed: {str(batch_error)}")
+                    logger.error(f"Batch order placement failed for {symbol}: {str(batch_error)}")
                     
                     # Try to provide more context in the error
                     if hasattr(batch_error, 'args') and len(batch_error.args) > 0:
@@ -600,17 +715,17 @@ class HyperliquidMarketMaker:
                                 individual_results.append(result)
                                 logger.debug(f"Placed individual {order['side']} order: {order['amount']} @ {order['price']}")
                             except Exception as order_error:
-                                logger.error(f"Error placing individual order: {str(order_error)}")
+                                logger.error(f"Error placing individual order for {symbol}: {str(order_error)}")
                         
                         self.open_orders = individual_results
                         return individual_results
                     return []
             else:
-                logger.warning("No orders to place")
+                logger.warning(f"No orders to place for {symbol}")
                 return []
                 
         except Exception as e:
-            logger.error(f"Error in place_market_making_orders_batch: {str(e)}")
+            logger.error(f"Error in place_market_making_orders_batch for {symbol}: {str(e)}")
             return []
 
     async def cancel_all_orders(self, symbol: str) -> bool:
@@ -648,18 +763,23 @@ class HyperliquidMarketMaker:
             logger.error(f"Error cancelling orders in batch: {str(e)}")
             return False
     
-    def assess_risk(self, position: Dict[str, Any], market_data: Dict[str, Any]) -> Dict[str, Any]:
+    def assess_risk(self, position: Dict[str, Any], market_data: Dict[str, Any], symbol_config: Dict[str, Any] = None) -> Dict[str, Any]:
         """
         Perform risk assessment based on current position and market data
         
         Args:
             position: Current position
             market_data: Market data
+            symbol_config: Configuration for this specific symbol
             
         Returns:
             Risk assessment
         """
         try:
+            # If no symbol config provided, use empty dict
+            if symbol_config is None:
+                symbol_config = {}
+                
             # Ensure position object exists
             if position is None:
                 position = {"size": 0, "side": "flat", "unrealized_pnl": 0}
@@ -707,11 +827,14 @@ class HyperliquidMarketMaker:
             # Calculate position value
             position_value = position_size_abs * current_price
             
-            # Safely get max position size from config
+            # Safely get max position size from config - first from symbol config, then general config
             try:
-                max_position_size = float(self.config["trading"].get("maxPositionSize", 0.1))
+                max_position_size = float(symbol_config.get("maxPositionSize", 0))
                 if max_position_size <= 0:
-                    max_position_size = 0.1
+                    # Try the general config if not found in symbol config
+                    max_position_size = float(self.config.get("trading", {}).get("maxPositionSize", 0.1))
+                    if max_position_size <= 0:
+                        max_position_size = 0.1
             except (TypeError, ValueError, KeyError):
                 logger.warning("Invalid maxPositionSize in config, using default")
                 max_position_size = 0.1
@@ -913,88 +1036,117 @@ class HyperliquidMarketMaker:
             if not self.exchange:
                 raise ConnectionError("Failed to initialize exchange connection")
             
-            # Find and validate the trading symbol
-            try:
-                symbol = await self.initialize_markets()
-                logger.info(f"Initialized trading with symbol: {symbol}")
-            except Exception as e:
-                logger.error(f"Failed to initialize markets: {str(e)}")
-                symbol = self.config["trading"]["symbol"]  # Fallback to config value
-                logger.warning(f"Falling back to symbol from config: {symbol}")
+            # Get symbols to trade
+            symbols_to_trade = []
+            
+            # Check if we have the new config format with symbols array
+            if "symbols" in self.config:
+                for symbol_config in self.config["symbols"]:
+                    if symbol_config.get("enabled", True):  # Only include enabled symbols
+                        symbols_to_trade.append(symbol_config["symbol"])
+                
+                if not symbols_to_trade:
+                    logger.warning("No enabled symbols found in config, falling back to default")
+                    # Fall back to the legacy config
+                    symbols_to_trade = [self.config.get("trading", {}).get("symbol", "BTC/USDC:USDC")]
+            else:
+                # Legacy config format
+                symbols_to_trade = [self.config.get("trading", {}).get("symbol", "BTC/USDC:USDC")]
+            
+            logger.info(f"Trading the following symbols: {symbols_to_trade}")
+            
+            # Validate all symbols
+            validated_symbols = []
+            for symbol in symbols_to_trade:
+                try:
+                    # Use the initialize_markets method but with the specific symbol
+                    validated_symbol = await self.initialize_markets_for_symbol(symbol)
+                    validated_symbols.append(validated_symbol)
+                    logger.info(f"Initialized trading with symbol: {validated_symbol}")
+                except Exception as e:
+                    logger.error(f"Failed to initialize market for {symbol}: {str(e)}")
+                    logger.warning(f"Skipping symbol: {symbol}")
+            
+            if not validated_symbols:
+                raise ValueError("No valid symbols to trade")
             
             update_interval = self.config["marketMaking"]["updateInterval"] / 1000  # Convert to seconds
             
             while True:
-                try:
-                    # Fetch latest market data
-                    market_data = await self.fetch_market_data(symbol)
-                    
-                    # Get current position
-                    position = await self.get_current_position(symbol)
-                    self.current_position = position
-                    
-                    # Update account balance
-                    await self.update_balance()
-                    
-                    # Calculate optimal prices
-                    prices = self.calculate_prices(market_data)
-                    
-                    # Perform risk assessment
-                    risk_assessment = self.assess_risk(position, market_data)
-                    
-                    # Log current status with safety checks
-                    logger.info("-----------------------------------")
-                    
-                    # Safe access to ticker data
-                    current_price = market_data.get('ticker', {}).get('last', 0)
-                    if current_price is None:
-                        current_price = 0
-                    logger.info(f"Current price: {current_price}")
-                    
-                    # Safe access to position data
-                    position_side = position.get('side', 'flat')
-                    position_size = position.get('size', 0)
-                    if position_side is None:
-                        position_side = 'flat'
-                    if position_size is None:
-                        position_size = 0
-                    logger.info(f"Position: {position_side} {position_size}")
-                    
-                    # Safe access to P&L
-                    pnl = position.get('unrealized_pnl', 0)
-                    if pnl is None:
-                        pnl = 0
-                    logger.info(f"P&L: {pnl}")
-                    
-                    # Safe access to prices
-                    bid_price = prices.get('bid_price', 0)
-                    ask_price = prices.get('ask_price', 0)
-                    if bid_price is None:
-                        bid_price = 0
-                    if ask_price is None:
-                        ask_price = 0
-                    logger.info(f"Prices: Bid={bid_price}, Ask={ask_price}")
-                    
-                    # Safe access to risk score
-                    risk_score = risk_assessment.get('risk_score', 0)
-                    if risk_score is None:
-                        risk_score = 0
-                    logger.info(f"Risk score: {risk_score}")
-                    
-                    # Execute risk management actions if needed
-                    await self.execute_risk_management_actions(symbol, risk_assessment)
-                    
-                    # Place market making orders if not paused
-                    if not risk_assessment["recommendations"]["pause_trading"]:
-                        await self.place_market_making_orders_batch(symbol, prices, position)
-                    
-                    # Wait for next update
-                    await asyncio.sleep(update_interval)
-                    
-                except Exception as e:
-                    logger.error(f"Error in market making loop: {str(e)}")
-                    await asyncio.sleep(update_interval)
-            
+                for symbol in validated_symbols:
+                    try:
+                        # Get the trading config for this symbol
+                        symbol_config = self.get_symbol_config(symbol)
+                        
+                        # Fetch latest market data
+                        market_data = await self.fetch_market_data(symbol)
+                        
+                        # Get current position
+                        position = await self.get_current_position(symbol)
+                        self.current_position = position
+                        
+                        # Update account balance
+                        await self.update_balance()
+                        
+                        # Calculate optimal prices
+                        prices = self.calculate_prices(market_data)
+                        
+                        # Perform risk assessment
+                        risk_assessment = self.assess_risk(position, market_data, symbol_config)
+                        
+                        # Log current status with safety checks
+                        logger.info(f"------- {symbol} -------")
+                        
+                        # Safe access to ticker data
+                        current_price = market_data.get('ticker', {}).get('last', 0)
+                        if current_price is None:
+                            current_price = 0
+                        logger.info(f"Current price: {current_price}")
+                        
+                        # Safe access to position data
+                        position_side = position.get('side', 'flat')
+                        position_size = position.get('size', 0)
+                        if position_side is None:
+                            position_side = 'flat'
+                        if position_size is None:
+                            position_size = 0
+                        logger.info(f"Position: {position_side} {position_size}")
+                        
+                        # Safe access to P&L
+                        pnl = position.get('unrealized_pnl', 0)
+                        if pnl is None:
+                            pnl = 0
+                        logger.info(f"P&L: {pnl}")
+                        
+                        # Safe access to prices
+                        bid_price = prices.get('bid_price', 0)
+                        ask_price = prices.get('ask_price', 0)
+                        if bid_price is None:
+                            bid_price = 0
+                        if ask_price is None:
+                            ask_price = 0
+                        logger.info(f"Prices: Bid={bid_price}, Ask={ask_price}")
+                        
+                        # Safe access to risk score
+                        risk_score = risk_assessment.get('risk_score', 0)
+                        if risk_score is None:
+                            risk_score = 0
+                        logger.info(f"Risk score: {risk_score}")
+                        
+                        # Execute risk management actions if needed
+                        await self.execute_risk_management_actions(symbol, risk_assessment)
+                        
+                        # Place market making orders if not paused
+                        if not risk_assessment["recommendations"]["pause_trading"]:
+                            # Pass the symbol-specific config
+                            await self.place_market_making_orders_batch(symbol, prices, position, symbol_config)
+                            
+                    except Exception as e:
+                        logger.error(f"Error in market making loop for {symbol}: {str(e)}")
+                
+                # Wait for next update
+                await asyncio.sleep(update_interval)
+                
         except Exception as e:
             logger.error(f"Fatal error in market maker: {str(e)}")
             raise
