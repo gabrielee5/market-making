@@ -46,11 +46,11 @@
         },
         {
             "symbol": "TRUMP/USDC:USDC",
-            "enabled": false,
-            "orderSize": 5.0,
-            "maxOrderSize": 100.0,
+            "enabled": true,
+            "orderSize": 3.0,
+            "maxOrderSize": 20.0,
             "minOrderSize": 1.0,
-            "maxPositionSize": 250.0,
+            "maxPositionSize": 180.0,
             "leverageLevel": 1,
             "price_step": 0.1
         },
@@ -58,11 +58,21 @@
             "symbol": "PURR/USDC:USDC",
             "enabled": true,
             "orderSize": 200.0,
-            "maxOrderSize": 4000.0,
-            "minOrderSize": 40.0,
+            "maxOrderSize": 2000.0,
+            "minOrderSize": 25.0,
             "maxPositionSize": 10000.0,
             "leverageLevel": 1,
             "price_step": 0.2
+        },
+        {
+            "symbol": "OGN/USDC:USDC",
+            "enabled": true,
+            "orderSize": 300.0,
+            "maxOrderSize": 6000.0,
+            "minOrderSize": 60.0,
+            "maxPositionSize": 15000.0,
+            "leverageLevel": 1,
+            "price_step": 0.15
         }
     ],
     

@@ -534,10 +534,9 @@ class HyperliquidMarketMaker:
             return {"size": 0, "side": "flat", "unrealized_pnl": 0}
             
         try:
-            positions = await self.exchange.fetch_positions([symbol])
-            if positions and len(positions) > 0:
-                position = positions[0]
-                # Extract values with safe defaults
+            position = await self.exchange.fetch_position(symbol)
+            if position:
+                # Extract values with safe defaults from the new response structure
                 contracts = position.get("contracts", 0)
                 side = position.get("side", "flat")
                 unrealized_pnl = position.get("unrealizedPnl", 0)
@@ -562,7 +561,7 @@ class HyperliquidMarketMaker:
                 }
             return {"size": 0, "side": "flat", "unrealized_pnl": 0}
         except Exception as e:
-            logger.error(f"Error fetching positions: {str(e)}")
+            logger.error(f"Error fetching position: {str(e)}")
             return {"size": 0, "side": "flat", "unrealized_pnl": 0}
     
     async def place_market_making_orders_batch(self, symbol: str, prices: Dict[str, float], position: Dict[str, Any], symbol_config: Dict[str, Any] = None) -> List[Dict]:
@@ -884,13 +883,10 @@ class HyperliquidMarketMaker:
                 logger.warning(f"Invalid unrealized PnL: {unrealized_pnl}, using 0")
                 unrealized_pnl_float = 0
                 
-            # Now it's safe to use abs()
             position_size_abs = abs(position_size_float)
             
-            # Calculate position value
             position_value = position_size_abs * current_price
             
-            # Safely get max position size from config - first from symbol config, then general config
             try:
                 max_position_size = float(symbol_config.get("maxPositionSize", 0))
                 if max_position_size <= 0:
@@ -902,7 +898,6 @@ class HyperliquidMarketMaker:
                 logger.warning("Invalid maxPositionSize in config, using default")
                 max_position_size = 0.1
                 
-            # Check if position exceeds limits
             exceeds_position_limit = position_size_abs > max_position_size
             
             # Calculate max acceptable drawdown safely
@@ -946,10 +941,8 @@ class HyperliquidMarketMaker:
             should_stop_loss = (unrealized_pnl_float < 0 and 
                             abs(unrealized_pnl_float) > position_value * stop_loss_percentage / 100)
             
-            # Check daily loss limit
             daily_loss_limit_exceeded = (self.current_balance < self.start_balance - max_daily_loss)
             
-            # Simplified risk score from 0-100
             risk_score = 100 if exceeds_position_limit else (position_size_abs / max_position_size * 80)
             
             return {
@@ -1024,12 +1017,20 @@ class HyperliquidMarketMaker:
             logger.error(f"Error executing risk management actions: {str(e)}")
     
     async def close_position(self, symbol: str) -> None:
-        """Close the entire position for a symbol with improved error handling"""
+        """Close the entire position for a symbol with improved error handling and slippage control"""
         if not self.exchange:
             logger.error("Exchange not initialized")
             return
             
         try:
+            # First, fetch the current market data to get the latest price
+            market_data = await self.fetch_market_data(symbol)
+            current_price = market_data.get('ticker', {}).get('last')
+            
+            if not current_price:
+                logger.error(f"Could not get current price for {symbol}, aborting position closure")
+                return
+                
             position = await self.get_current_position(symbol)
             
             # Safe extraction with defaults
@@ -1037,24 +1038,50 @@ class HyperliquidMarketMaker:
             position_side = position.get("side", "flat")
             
             if position_size > 0 and position_side != "flat":
+                # Get the slippage percentage from config or use default
+                slippage_pct = float(self.config.get("riskManagement", {}).get("maxSlippage", 0.05))
+                
+                # Create parameters with slippage
+                params = {
+                    "slippage": str(slippage_pct)  # Convert to string as required by Hyperliquid API
+                }
+                
                 # Create market order in the opposite direction
                 if position_side == "long":
-                    await self.exchange.create_market_sell_order(symbol, position_size)
+                    logger.info(f"Closing long position: {position_size} @ market price (current: {current_price})")
+                    await self.exchange.create_market_sell_order(
+                        symbol, 
+                        position_size,
+                        params=params
+                    )
                     logger.info(f"Closed long position: {position_size}")
                 else:
-                    await self.exchange.create_market_buy_order(symbol, position_size)
+                    logger.info(f"Closing short position: {position_size} @ market price (current: {current_price})")
+                    await self.exchange.create_market_buy_order(
+                        symbol, 
+                        position_size,
+                        params=params
+                    )
                     logger.info(f"Closed short position: {position_size}")
                     
         except Exception as e:
             logger.error(f"Error closing position: {str(e)}")
     
     async def reduce_position(self, symbol: str) -> None:
-        """Reduce the position by half with improved error handling"""
+        """Reduce the position by half with improved error handling and slippage control"""
         if not self.exchange:
             logger.error("Exchange not initialized")
             return
             
         try:
+            # First, fetch the current market data to get the latest price
+            market_data = await self.fetch_market_data(symbol)
+            current_price = market_data.get('ticker', {}).get('last')
+            
+            if not current_price:
+                logger.error(f"Could not get current price for {symbol}, aborting position reduction")
+                return
+                
             position = await self.get_current_position(symbol)
             
             # Safe extraction with defaults
@@ -1065,12 +1092,30 @@ class HyperliquidMarketMaker:
                 # Reduce by 50%
                 reduction_size = position_size / 2
                 
+                # Get the slippage percentage from config or use default
+                slippage_pct = float(self.config.get("riskManagement", {}).get("maxSlippage", 0.05))
+                
+                # Create parameters with slippage
+                params = {
+                    "slippage": str(slippage_pct)  # Convert to string as required by Hyperliquid API
+                }
+                
                 # Create market order in the opposite direction
                 if position_side == "long":
-                    await self.exchange.create_market_sell_order(symbol, reduction_size)
+                    logger.info(f"Reducing long position by: {reduction_size} @ market price (current: {current_price})")
+                    await self.exchange.create_market_sell_order(
+                        symbol, 
+                        reduction_size,
+                        params=params
+                    )
                     logger.info(f"Reduced long position by: {reduction_size}")
                 else:
-                    await self.exchange.create_market_buy_order(symbol, reduction_size)
+                    logger.info(f"Reducing short position by: {reduction_size} @ market price (current: {current_price})")
+                    await self.exchange.create_market_buy_order(
+                        symbol, 
+                        reduction_size,
+                        params=params
+                    )
                     logger.info(f"Reduced short position by: {reduction_size}")
                     
         except Exception as e:
