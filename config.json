@@ -36,13 +36,13 @@
         },
         {
             "symbol": "SOL/USDC:USDC",
-            "enabled": false,
-            "orderSize": 0.5,
-            "maxOrderSize": 2.0,
+            "enabled": true,
+            "orderSize": 0.3,
+            "maxOrderSize": 1.5,
             "minOrderSize": 0.1,
             "maxPositionSize": 5.0,
             "leverageLevel": 1,
-            "price_step": 0.02
+            "price_step": 0.05
         },
         {
             "symbol": "TRUMP/USDC:USDC",

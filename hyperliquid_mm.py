@@ -673,8 +673,11 @@ class HyperliquidMarketMaker:
             # Add bid orders to batch
             if bid_size > 0 and prices["bid_price"] > 0:
                 for i in range(layers):
-                    # layer_bid_price = round(prices["bid_price"] * (1 - (i * (multiplier - 1) / 100)), price_precision)
-                    layer_bid_price = round(prices["bid_price"] * (1 - (price_step /100 * fibonacci_sequence[i])), price_precision)
+                    if i == 0:
+                        layer_bid_price = round(prices["bid_price"] * (1 - (i * (multiplier - 1) / 100)), price_precision)
+                        first_order_bid = layer_bid_price
+                    else:
+                        layer_bid_price = round(first_order_bid * (1 - (price_step /100 * fibonacci_sequence[i])), price_precision)
                     
                     # Use Fibonacci multiplier for order size
                     # First layer (i=0) is the base_order_size
@@ -702,8 +705,11 @@ class HyperliquidMarketMaker:
             # Add ask orders to batch
             if ask_size > 0 and prices["ask_price"] > 0:
                 for i in range(layers):
-                    # layer_ask_price = round(prices["ask_price"] * (1 + (i * (multiplier - 1) / 100)), price_precision)
-                    layer_ask_price = round(prices["ask_price"] * (1 + (price_step /100 * fibonacci_sequence[i])), price_precision)
+                    if i == 0:
+                        layer_ask_price = round(prices["ask_price"] * (1 + (i * (multiplier - 1) / 100)), price_precision)
+                        first_order_ask = layer_ask_price
+                    else:
+                        layer_ask_price = round(first_order_ask * (1 + (price_step /100 * fibonacci_sequence[i])), price_precision)
                     
                     # Use Fibonacci multiplier for order size
                     # First layer (i=0) is the base_order_size
