@@ -37,10 +37,10 @@
         {
             "symbol": "SOL/USDC:USDC",
             "enabled": true,
-            "orderSize": 0.3,
+            "orderSize": 0.2,
             "maxOrderSize": 1.5,
             "minOrderSize": 0.1,
-            "maxPositionSize": 5.0,
+            "maxPositionSize": 15.0,
             "leverageLevel": 1,
             "price_step": 0.05
         },
@@ -60,9 +60,9 @@
             "orderSize": 200.0,
             "maxOrderSize": 2000.0,
             "minOrderSize": 25.0,
-            "maxPositionSize": 10000.0,
+            "maxPositionSize": 25000.0,
             "leverageLevel": 1,
-            "price_step": 0.2
+            "price_step": 0.5
         },
         {
             "symbol": "OGN/USDC:USDC",
