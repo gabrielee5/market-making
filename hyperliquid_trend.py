@@ -564,8 +564,105 @@ class HyperliquidMMTrend:
         except Exception as e:
             logger.error(f"Error fetching position: {str(e)}")
             return {"size": 0, "side": "flat", "unrealized_pnl": 0}
+
+    async def calculate_indicators(self, symbol: str, lookback_periods: int = 20) -> Dict[str, Any]:
+        """
+        Calculate technical indicators for a symbol
+        
+        Args:
+            symbol: Trading pair symbol
+            lookback_periods: Number of periods to look back for calculations
+            
+        Returns:
+            Dictionary containing calculated indicators
+        """
+        if not self.exchange:
+            logger.error("Exchange not initialized")
+            return {
+                "sma": None,
+                "atr": None,
+                "has_data": False
+            }
+            
+        try:
+            # Fetch OHLCV data for indicator calculations
+            # For ATR, we need OHLCV (Open, High, Low, Close, Volume) data
+            # Default timeframe is 1h, but you can change this based on your strategy
+            timeframe = '5m'
+            
+            # Try to get a bit more data than requested to ensure we can calculate properly
+            fetch_limit = lookback_periods + 5
+            
+            # Fetch the OHLCV data
+            ohlcv = await self.exchange.fetch_ohlcv(symbol, timeframe, limit=fetch_limit)
+            
+            # If we don't have enough data, return empty indicators
+            if len(ohlcv) < lookback_periods:
+                logger.warning(f"Not enough OHLCV data for {symbol} to calculate indicators")
+                return {
+                    "sma": None,
+                    "atr": None,
+                    "has_data": False
+                }
+                
+            # Convert OHLCV data to lists for easier processing
+            timestamps = [candle[0] for candle in ohlcv]
+            opens = [candle[1] for candle in ohlcv]
+            highs = [candle[2] for candle in ohlcv]
+            lows = [candle[3] for candle in ohlcv]
+            closes = [candle[4] for candle in ohlcv]
+            volumes = [candle[5] for candle in ohlcv]
+            
+            # Calculate SMA (Simple Moving Average) on close prices
+            sma_period = lookback_periods
+            if len(closes) >= sma_period:
+                sma = sum(closes[-sma_period:]) / sma_period
+            else:
+                sma = None
+            
+            # Calculate ATR (Average True Range)
+            atr_period = lookback_periods
+            true_ranges = []
+            
+            # Need at least 2 candles to calculate the first true range
+            if len(closes) > 1:
+                # Calculate true ranges
+                for i in range(1, len(closes)):
+                    high_low = highs[i] - lows[i]
+                    high_close_prev = abs(highs[i] - closes[i-1])
+                    low_close_prev = abs(lows[i] - closes[i-1])
+                    
+                    # True Range is the maximum of these three values
+                    true_range = max(high_low, high_close_prev, low_close_prev)
+                    true_ranges.append(true_range)
+                    
+                # Calculate ATR as the average of true ranges over the period
+                if len(true_ranges) >= atr_period:
+                    atr = sum(true_ranges[-atr_period:]) / atr_period
+                else:
+                    # If we don't have enough periods, use what we have
+                    atr = sum(true_ranges) / len(true_ranges)
+            else:
+                atr = None
+            
+            return {
+                "sma": sma,
+                "atr": atr,
+                "has_data": True,
+                "close": closes[-1] if closes else None,
+                "timeframe": timeframe,
+                "candle_count": len(ohlcv)
+            }
+            
+        except Exception as e:
+            logger.error(f"Error calculating indicators for {symbol}: {str(e)}")
+            return {
+                "sma": None,
+                "atr": None,
+                "has_data": False
+            }
     
-    async def place_market_making_orders_batch(self, symbol: str, prices: Dict[str, float], position: Dict[str, Any], symbol_config: Dict[str, Any] = None) -> List[Dict]:
+    async def place_market_making_orders_batch(self, symbol: str, prices: Dict[str, float], position: Dict[str, Any], symbol_config: Dict[str, Any] = None, indicators: Dict[str, Any] = None) -> List[Dict]:
         """
         Place market making orders with batch operation for faster execution
         
@@ -639,12 +736,12 @@ class HyperliquidMMTrend:
                 layers = 1
                 
             try:
-                multiplier = float(self.config["marketMaking"].get("layerSpreadMultiplier", 1.5))
-                if multiplier <= 1:
-                    multiplier = 1.5
+                multiplier = float(self.config["marketMaking"].get("layerSpreadMultiplier", 1.0))
+                if multiplier < 1.0:
+                    multiplier = 1.0
             except (ValueError, TypeError):
                 logger.warning("Invalid multiplier setting, using default")
-                multiplier = 1.5
+                multiplier = 1.0
 
             try:
                 # Get price_step from symbol-specific config instead of marketMaking section
@@ -655,42 +752,46 @@ class HyperliquidMMTrend:
             except (ValueError, TypeError):
                 logger.warning(f"Invalid price_step setting for {symbol}, using default")
                 price_step = 0.1
-
-            # special parameters
+            
+            # indicators
             try:
-                m = 0.35
-                p = 1.5
+                if indicators and indicators.get("has_data", False):
+                    sma = indicators.get("sma")
+                    atr = indicators.get("atr")
+                    current_price = prices.get("mid_price") or (prices.get("bid_price") + prices.get("ask_price")) / 2
+                    
+                    m = 0.75
+                    p = 1.5
 
-                pnl = float(position.get("unrealized_pnl", 0))
-                if pnl > 0:
-                    if position_side == "long":
-                    # If we're in profit on a long position, reduce bid size
-                        distancer_ask = p
-                        distancer_bid = m
-                    elif position_side == "short":
-                        distancer_bid = p
-                        distancer_ask = m
-                    else:
-                        distancer_bid = 1.0
-                        distancer_ask = 1.0
-                elif pnl < 0:
-                    if position_side == "long":
-                        distancer_ask = m
-                        distancer_bid = p
-                    elif position_side == "short":
-                        distancer_bid = m
-                        distancer_ask = p
-                    else:
-                        distancer_bid = 1.0
-                        distancer_ask = 1.0
-                else:
-                    distancer_bid = 1.0
-                    distancer_ask = 1.0
-            except (ValueError, TypeError):
+                    x = 3.0
+                    y = 1.0
+
+                    if sma is not None and current_price is not None:
+
+                        if current_price > sma:
+                            distancer_ask = p
+                            distancer_bid = m
+                            qty_multiplier_ask = x
+                            qty_multiplier_bid = y
+
+                        elif current_price < sma:
+                            distancer_ask = m
+                            distancer_bid = p
+                            qty_multiplier_ask = y
+                            qty_multiplier_bid = x
+                        else:
+                            distancer_bid = 1.0
+                            distancer_ask = 1.0
+                            qty_multiplier_ask = 1.0
+                            qty_multiplier_bid = 1.0
+                            
+                        #logger.debug(f"Adjusted distancers based on SMA. Bid: {distancer_bid}, Ask: {distancer_ask}")
+
+            except (ValueError, TypeError):    
                 logger.warning(f"Invalid distancer calculation setting for {symbol}, using default")
                 distancer_bid = 1.0
                 distancer_ask = 1.0
-            
+
             # Prepare batch orders
             batch_orders = []
             
@@ -717,7 +818,7 @@ class HyperliquidMMTrend:
                     
                     # Use Fibonacci multiplier for order size
                     # First layer (i=0) is the base_order_size
-                    layer_bid_size = bid_size * fibonacci_sequence[i]
+                    layer_bid_size = bid_size * fibonacci_sequence[i] * qty_multiplier_bid
                     
                     try:
                         min_order_size = float(symbol_config.get("minOrderSize", 0.001))
@@ -732,8 +833,7 @@ class HyperliquidMMTrend:
                             "amount": layer_bid_size,
                             "price": layer_bid_price,
                             "params": {
-                                "timeInForce": "Gtc",
-                                "postOnly": True
+                                "timeInForce": "Alo",
                             }
                         })
                         logger.debug(f"Added bid order to batch: {layer_bid_size} @ {layer_bid_price}")
@@ -749,7 +849,7 @@ class HyperliquidMMTrend:
                     
                     # Use Fibonacci multiplier for order size
                     # First layer (i=0) is the base_order_size
-                    layer_ask_size = ask_size * fibonacci_sequence[i]
+                    layer_ask_size = ask_size * fibonacci_sequence[i] * qty_multiplier_ask
                     
                     try:
                         min_order_size = float(symbol_config.get("minOrderSize", 0.001))
@@ -764,8 +864,7 @@ class HyperliquidMMTrend:
                             "amount": layer_ask_size,
                             "price": layer_ask_price,
                             "params": {
-                                "timeInForce": "Gtc",
-                                "postOnly": True
+                                "timeInForce": "Alo",
                             }
                         })
                         logger.debug(f"Added ask order to batch: {layer_ask_size} @ {layer_ask_price}")
@@ -1238,6 +1337,11 @@ class HyperliquidMMTrend:
                         # Update account balance
                         await self.update_balance()
                         
+                        # Calculate technical indicators
+                        # Get indicator periods from config or use default
+                        indicator_periods = self.config.get("indicators", {}).get("sma", {}).get("period", 20)
+                        indicators = await self.calculate_indicators(symbol, lookback_periods=indicator_periods)
+
                         # Calculate optimal prices
                         prices = self.calculate_prices(market_data)
                         
@@ -1253,6 +1357,14 @@ class HyperliquidMMTrend:
                             current_price = 0
                         logger.info(f"Current price: {current_price}")
                         
+                        # Log indicator values if available
+                        if indicators and indicators.get("has_data", False):
+                            sma = indicators.get("sma")
+                            # atr = indicators.get("atr")
+                            trend = "UP" if sma is not None and current_price > sma else "DOWN"
+                            if sma is not None:
+                                logger.info(f"SMA({indicator_periods}): {sma:.2f} --- TREND IS {trend}")
+
                         # Safe access to position data
                         position_side = position.get('side', 'flat')
                         position_size = position.get('size', 0)
@@ -1289,7 +1401,7 @@ class HyperliquidMMTrend:
                         # Place market making orders if not paused
                         if not risk_assessment["recommendations"]["pause_trading"]:
                             # Pass the symbol-specific config
-                            await self.place_market_making_orders_batch(symbol, prices, position, symbol_config)
+                            await self.place_market_making_orders_batch(symbol, prices, position, symbol_config, indicators)
                             
                     except Exception as e:
                         logger.error(f"Error in market making loop for {symbol}: {str(e)}")

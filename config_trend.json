@@ -37,7 +37,7 @@
         {
             "symbol": "SOL/USDC:USDC",
             "enabled": true,
-            "orderSize": 0.1,
+            "orderSize": 0.25,
             "maxOrderSize": 1.0,
             "minOrderSize": 0.05,
             "maxPositionSize": 7.0,
@@ -83,7 +83,7 @@
         "maxSpreadPercentage": 0.99,
         "updateInterval": 60000,
         "orderBookDepth": 20,
-        "placementLayers": 6,
+        "placementLayers": 8,
         "layerSpreadMultiplier": 1.0
     },
     
@@ -124,6 +124,18 @@
             "period": 20,
             "stdDev": 2,
             "significance": 0.6
+        },
+        "sma": {
+            "enabled": true,
+            "period": 20,
+            "significance": 0.7,
+            "timeframe": "5m"
+        },
+        "atr": {
+            "enabled": true,
+            "period": 5,
+            "significance": 0.6,
+            "timeframe": "1m"
         }
     },
     

@@ -696,8 +696,7 @@ class HyperliquidMarketMaker:
                             "amount": layer_bid_size,
                             "price": layer_bid_price,
                             "params": {
-                                "timeInForce": "Gtc",
-                                "postOnly": True
+                                "timeInForce": "Alo",
                             }
                         })
                         logger.debug(f"Added bid order to batch: {layer_bid_size} @ {layer_bid_price}")
@@ -728,8 +727,7 @@ class HyperliquidMarketMaker:
                             "amount": layer_ask_size,
                             "price": layer_ask_price,
                             "params": {
-                                "timeInForce": "Gtc",
-                                "postOnly": True
+                                "timeInForce": "Alo",
                             }
                         })
                         logger.debug(f"Added ask order to batch: {layer_ask_size} @ {layer_ask_price}")
