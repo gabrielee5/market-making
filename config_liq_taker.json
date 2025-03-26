@@ -1,0 +1,158 @@
+{
+    "exchange": {
+        "name": "hyperliquid",
+        "testnet": false
+    },
+    
+    "defaultTradingParams": {
+        "orderSize": 0.01,
+        "maxOrderSize": 0.05,
+        "minOrderSize": 0.001,
+        "maxPositionSize": 0.1,
+        "leverageLevel": 1,
+        "price_step": 0.1
+    },
+    
+    "symbols": [
+        {
+            "symbol": "BTC/USDC:USDC",
+            "enabled": false,
+            "orderSize": 0.01,
+            "maxOrderSize": 0.05,
+            "minOrderSize": 0.001,
+            "maxPositionSize": 0.1,
+            "leverageLevel": 1,
+            "price_step": 0.01
+        },
+        {
+            "symbol": "ETH/USDC:USDC",
+            "enabled": false,
+            "orderSize": 0.05,
+            "maxOrderSize": 0.2,
+            "minOrderSize": 0.005,
+            "maxPositionSize": 0.5,
+            "leverageLevel": 1,
+            "price_step": 0.01
+        },
+        {
+            "symbol": "SOL/USDC:USDC",
+            "enabled": true,
+            "orderSize": 0.1,
+            "maxOrderSize": 1.0,
+            "minOrderSize": 0.05,
+            "maxPositionSize": 4.0,
+            "leverageLevel": 1,
+            "price_step": 0.1
+        },
+        {
+            "symbol": "TRUMP/USDC:USDC",
+            "enabled": false,
+            "orderSize": 3.0,
+            "maxOrderSize": 20.0,
+            "minOrderSize": 1.0,
+            "maxPositionSize": 180.0,
+            "leverageLevel": 1,
+            "price_step": 0.05
+        },
+        {
+            "symbol": "PURR/USDC:USDC",
+            "enabled": false,
+            "orderSize": 200.0,
+            "maxOrderSize": 2000.0,
+            "minOrderSize": 25.0,
+            "maxPositionSize": 25000.0,
+            "leverageLevel": 1,
+            "price_step": 0.5
+        },
+        {
+            "symbol": "OGN/USDC:USDC",
+            "enabled": false,
+            "orderSize": 300.0,
+            "maxOrderSize": 6000.0,
+            "minOrderSize": 60.0,
+            "maxPositionSize": 15000.0,
+            "leverageLevel": 1,
+            "price_step": 0.15
+        }
+    ],
+    
+    "marketMaking": {
+        "strategy": "basic",
+        "spreadPercentage": 0.15,
+        "minSpreadPercentage": 0.05,
+        "maxSpreadPercentage": 0.99,
+        "updateInterval": 60000,
+        "orderBookDepth": 20,
+        "placementLayers": 5,
+        "layerSpreadMultiplier": 1.5
+    },
+    
+    "riskManagement": {
+        "maxSlippage": 0.05,
+        "maxDrawdown": 5,
+        "stopLossPercentage": 2,
+        "takeProfitPercentage": 1,
+        "hedgeRatio": 0.8,
+        "maxDailyLoss": 100,
+        "cooldownPeriod": 300000
+    },
+    
+    "advanced": {
+        "hedgingEnabled": false,
+        "correlationThreshold": 0.7,
+        "volumeThreshold": 10000,
+        "volatilityScaling": true,
+        "adaptiveParameters": true,
+        "orderImbalanceThreshold": 2
+    },
+    
+    "indicators": {
+        "ema": {
+            "enabled": true,
+            "periods": [8, 21, 55],
+            "significance": 0.7
+        },
+        "rsi": {
+            "enabled": true,
+            "period": 14,
+            "overbought": 70,
+            "oversold": 30,
+            "significance": 0.5
+        },
+        "bollingerBands": {
+            "enabled": true,
+            "period": 20,
+            "stdDev": 2,
+            "significance": 0.6
+        },
+        "sma": {
+            "enabled": true,
+            "period": 20,
+            "significance": 0.7,
+            "timeframe": "5m"
+        },
+        "atr": {
+            "enabled": true,
+            "period": 5,
+            "significance": 0.6,
+            "timeframe": "1m"
+        }
+    },
+    
+    "development": {
+        "logLevel": "info",
+        "backtesting": false,
+        "simulationBalance": 10000,
+        "recordData": true,
+        "dataStoragePath": "./data"
+    },
+    
+    "notifications": {
+        "enabled": false,
+        "thresholds": {
+            "profitNotification": 50,
+            "lossNotification": 50,
+            "positionSizeAlert": 0.07
+        }
+    }
+}
