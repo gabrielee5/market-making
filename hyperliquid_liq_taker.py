@@ -765,8 +765,9 @@ class HyperliquidLiqTaker:
                     atr = indicators.get("atr")
                     current_price = prices.get("mid_price") or (prices.get("bid_price") + prices.get("ask_price")) / 2
                     
-                    m = 0.75 # opposite of trend
-                    p = 0.75 # direction of trend
+                    # to be calculated based on ATR
+                    m = 0.5 # opposite of trend
+                    p = 0.5 # direction of trend
 
                     x = 1.0 # reduced from 3.0
                     y = 1.0
